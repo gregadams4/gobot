@@ -113,7 +113,6 @@ func (h *HCSR04Driver) GetDistance() error {
 	var start time.Time
 	var value int
 	var err error
-	var set bool
 
 	if err = h.outputConn.DigitalWrite(h.Pin(), 0); err != nil {
 		h.lock.Unlock()
@@ -139,19 +138,13 @@ func (h *HCSR04Driver) GetDistance() error {
 	for {
 		value, err = h.inputConn.DigitalRead(h.InputPin())
 		if err != nil {
-			break
+			h.lock.Unlock()
+			return err
 		}
 
-		if !set {
-			if value == 1 {
-				start = time.Now()
-				set = true
-			}
-		} else {
-			if value == 0 {
-				h.Distance.duration = time.Since(start)
-				break
-			}
+		if value == 1 {
+			start = time.Now()
+			break
 		}
 
 		if time.Since(absStart) >= h.timeout {
@@ -159,6 +152,24 @@ func (h *HCSR04Driver) GetDistance() error {
 			return ErrHCSR04ReadTimeout
 		}
 
+	}
+
+	for {
+		value, err = h.inputConn.DigitalRead(h.InputPin())
+		if err != nil {
+			h.lock.Unlock()
+			return err
+		}
+
+		if value == 0 {
+			h.Distance.duration = time.Since(start)
+			break
+		}
+
+		if time.Since(absStart) >= h.timeout {
+			h.lock.Unlock()
+			return ErrHCSR04ReadTimeout
+		}
 	}
 
 	h.lock.Unlock()
